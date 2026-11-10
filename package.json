@@ -34,8 +34,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "prepublishOnly": "pnpm run build",
-    "release": "npm version --message \"Release %s\"",
-    "postversion": "git push --follow-tags"
+    "release": "sh -c 'npm version --message \"Release %s\" \"$0\" && git push --follow-tags'"
   },
   "peerDependencies": {
     "mobx": ">=7.0.0"
