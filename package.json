@@ -1,0 +1,51 @@
+{
+  "name": "mobx-query-lite",
+  "version": "0.1.0",
+  "description": "Lightweight observable queries, infinite queries and mutations for MobX",
+  "keywords": [
+    "mobx",
+    "query",
+    "cache",
+    "data fetching",
+    "infinite query",
+    "mutation"
+  ],
+  "license": "MIT",
+  "author": "https://github.com/kubk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kubk/mobx-query-lite.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --typecheck",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "prepublishOnly": "pnpm run build",
+    "release": "npm version --message \"Release %s\"",
+    "postversion": "git push --follow-tags"
+  },
+  "peerDependencies": {
+    "mobx": ">=7.0.0"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "mobx": "^7.1.6",
+    "oxfmt": "^0.55.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

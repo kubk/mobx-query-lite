@@ -1,0 +1,6 @@
+{
+  "singleQuote": false,
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "ignorePatterns": ["dist", ".github"]
+}
