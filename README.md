@@ -16,7 +16,9 @@ npm install mobx-query-lite mobx
 - `makeInfiniteQuery(...)`: creates an observable cursor-paginated query state.
 - `makeMutation(...)`: creates an observable mutation state.
 - `inMemoryCache`: shared session cache used by default.
-- `queryRegistry`: map of live queries by key.
+- `invalidateQueries({ key, exact?, refetchInactive? })`: invalidates every live query whose key starts with `key`, like React Query's `invalidateQueries({ queryKey })`.
+- `hashKey(key)`: the stable string identity of a key, used by `queryRegistry` and `inMemoryCache`.
+- `queryRegistry`: map of live queries by `hashKey(key)`.
 - `refetchActiveQueries()`: refetches every query whose data is currently observed, for user-triggered refreshes such as pull to refresh. Inactive queries are left untouched.
 - `refetchActiveQueriesOnVisible(minInterval?)`: calls `refetchActiveQueries()` when the page becomes visible again, at most once per `minInterval` (5 seconds by default), so changes made outside the app show up when the user returns. Returns a function that stops listening.
 
@@ -30,7 +32,7 @@ import { makeQuery } from "mobx-query-lite";
 type TodoFilter = "all" | "open" | "done";
 
 class TodoStore {
-  todosQuery = makeQuery({ key: "todos.list", query: api.todos.list.query });
+  todosQuery = makeQuery({ key: ["todos.list"], query: api.todos.list.query });
 
   filter: TodoFilter = "open";
 
@@ -87,11 +89,13 @@ Reading `store.visibleTodos` from an `observer` component observes the computed 
 
 ## Query Keys
 
+Keys are arrays, as in React Query, such as `["todos.list"]` or `["todos.list", { status: "open" }]`. Two keys are the same cache entry when they serialize to the same JSON; object properties are sorted first, so `{ a, b }` and `{ b, a }` match. Put the broad part first and the specific part last, so `invalidateQueries` can target a whole group by its prefix.
+
 Use a static config by default.
 
 ```ts
 const currentUserStatsQuery = makeQuery({
-  key: "currentUser.stats",
+  key: ["currentUser.stats"],
   query: () =>
     api.currentUserStats.query({
       timeZone: getTz(),
@@ -115,7 +119,7 @@ class CatalogStore {
     const language = this.language;
 
     return {
-      key: `catalog.list:${language}`,
+      key: ["catalog.list", { language }],
       query: () => api.catalog.list.query({ language }),
     };
   });
@@ -136,7 +140,7 @@ class CatalogStore {
     const filters = this.filters;
 
     return {
-      key: `catalog.list:${JSON.stringify(filters)}`,
+      key: ["catalog.list", filters],
       query: ({ cursor }) =>
         api.catalog.list.query({
           filters,
@@ -165,7 +169,7 @@ The first page uses the same observed-read fetching behavior as `makeQuery`. `fe
 | `prefetch()`           | Fetch only when data is missing, stale, or invalidated                                                         |
 | `invalidate(options?)` | Mark data stale and immediately refetch it when active, or regardless of activity with `refetchInactive: true` |
 | `refetch()`            | Low-level escape hatch that forces a request; do not use it to synchronize data after a mutation               |
-| `setData(data)`        | Manually replace current data and mark it fresh                                                                |
+| `setData(data)`        | Manually replace current data and mark it fresh; responses of requests started earlier are discarded           |
 
 ## Infinite Query State
 
@@ -196,6 +200,23 @@ After a mutation, always use `invalidate()` instead of `refetch()`. Invalidation
 ```ts
 await query.invalidate({ refetchInactive: true });
 ```
+
+To invalidate a group of queries, such as a list for every filter, match their keys by prefix, as in React Query:
+
+```ts
+// ["todos.list"], ["todos.list", { status: "open" }], ["todos.list", { status: "done" }]
+await invalidateQueries({ key: ["todos.list"] });
+
+// Object items match the properties the filter lists: only lists with status "open"
+await invalidateQueries({ key: ["todos.list", { status: "open" }] });
+
+// Only ["todos.list"] itself
+await invalidateQueries({ key: ["todos.list"], exact: true });
+```
+
+Array items match by position and objects match the properties the filter lists, so `["todos"]` does not match `["todosArchive"]`.
+
+For an optimistic update, call `setData` before the mutation and `invalidate()` after it. `setData` discards the responses of requests that started before it, so a refetch already in flight cannot overwrite the optimistic data with older server state.
 
 Reserve `refetch()` for low-level flows that explicitly need a forced request without marking the query stale. It is not the cache-synchronization API.
 

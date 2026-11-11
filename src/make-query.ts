@@ -9,11 +9,12 @@ import {
   runInAction,
 } from "mobx";
 import { inMemoryCache } from "./cache.ts";
+import { hashKey, partialMatchKey, type QueryKey } from "./query-key.ts";
 import { toError } from "./to-error.ts";
 
 type QueryConfig<T> = {
   query: () => Promise<T>;
-  key: string;
+  key: QueryKey;
 };
 
 type QueryConfigFactory<T> = () => QueryConfig<T>;
@@ -25,6 +26,13 @@ export type QueryOptions = {
 
 export type InvalidateOptions = {
   refetchInactive?: boolean;
+};
+
+export type InvalidateQueriesFilters = InvalidateOptions & {
+  // Matches every query whose key starts with this one, like React Query's queryKey filter
+  key: QueryKey;
+  // Only match a query with exactly this key
+  exact?: boolean;
 };
 
 export type QueryState<T> = {
@@ -42,7 +50,23 @@ export type QueryState<T> = {
   setData: (data: T | undefined) => void;
 };
 
+// Live queries by hashKey(key)
 export const queryRegistry = new Map<string, StaticQuery<any>>();
+
+export async function invalidateQueries({
+  key,
+  exact,
+  ...options
+}: InvalidateQueriesFilters) {
+  const hash = hashKey(key);
+  await Promise.all(
+    Array.from(queryRegistry.entries())
+      .filter(([queryHash, query]) =>
+        exact ? queryHash === hash : partialMatchKey(query.key, key),
+      )
+      .map(([, query]) => query.invalidate(options)),
+  );
+}
 
 export async function refetchActiveQueries() {
   await Promise.all(
@@ -89,16 +113,16 @@ function makeStaticQuery<T>(
   fetcher: QueryConfig<T>,
   options?: QueryOptions,
 ): QueryState<T> {
-  const key = fetcher.key;
+  const hash = hashKey(fetcher.key);
 
-  const existing = queryRegistry.get(key) as StaticQuery<T> | undefined;
+  const existing = queryRegistry.get(hash) as StaticQuery<T> | undefined;
   if (existing) {
     return existing;
   }
 
   const state = new StaticQuery(fetcher, options);
 
-  queryRegistry.set(key, state);
+  queryRegistry.set(hash, state);
 
   return state;
 }
@@ -115,12 +139,14 @@ class StaticQuery<T> implements QueryState<T> {
   isActive = false;
   private isInvalidated = false;
   private invalidationId = 0;
+  private hash: string;
 
   constructor(
     private fetcher: QueryConfig<T>,
     options?: QueryOptions,
   ) {
-    const cached = inMemoryCache.get<T>(fetcher.key);
+    this.hash = hashKey(fetcher.key);
+    const cached = inMemoryCache.get<T>(this.hash);
 
     this.data = cached?.data;
     this.lastFetched = cached?.lastFetched ?? null;
@@ -155,6 +181,10 @@ class StaticQuery<T> implements QueryState<T> {
     });
 
     this.scheduleGc();
+  }
+
+  get key() {
+    return this.fetcher.key;
   }
 
   get isPending() {
@@ -225,24 +255,28 @@ class StaticQuery<T> implements QueryState<T> {
         this.isInvalidated = false;
       }
     });
-    inMemoryCache.set(this.fetcher.key, { data, lastFetched });
+    inMemoryCache.set(this.hash, { data, lastFetched });
   }
 
   setData(data: T | undefined) {
     this.registerIfMissing();
     this.scheduleGc();
 
+    // Data set by hand, such as an optimistic update, wins over responses of requests started before it
+    this.fetchId += 1;
+    this.isFetching = false;
+
     const lastFetched = Date.now();
     this.data = data;
     this.lastFetched = lastFetched;
     this.error = null;
     this.isInvalidated = false;
-    inMemoryCache.set(this.fetcher.key, { data, lastFetched });
+    inMemoryCache.set(this.hash, { data, lastFetched });
   }
 
   private registerIfMissing() {
-    if (!queryRegistry.has(this.fetcher.key)) {
-      queryRegistry.set(this.fetcher.key, this);
+    if (!queryRegistry.has(this.hash)) {
+      queryRegistry.set(this.hash, this);
     }
   }
 
@@ -269,9 +303,9 @@ class StaticQuery<T> implements QueryState<T> {
           return;
         }
 
-        if (queryRegistry.get(this.fetcher.key) === this) {
-          queryRegistry.delete(this.fetcher.key);
-          inMemoryCache.delete(this.fetcher.key);
+        if (queryRegistry.get(this.hash) === this) {
+          queryRegistry.delete(this.hash);
+          inMemoryCache.delete(this.hash);
           runInAction(() => {
             this.data = undefined;
             this.lastFetched = null;

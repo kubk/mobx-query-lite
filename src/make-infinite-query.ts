@@ -5,6 +5,7 @@ import {
   type QueryOptions,
   type QueryState,
 } from "./make-query.ts";
+import { hashKey, type QueryKey } from "./query-key.ts";
 import { toError } from "./to-error.ts";
 
 type InfiniteQueryInput<Cursor> = {
@@ -29,7 +30,7 @@ type InfiniteQueryConfig<Page extends AnyInfiniteQueryPage> = {
   query: (
     input: InfiniteQueryInput<InfiniteQueryCursor<Page>>,
   ) => Promise<Page>;
-  key: string;
+  key: QueryKey;
 };
 
 type InfiniteQueryConfigFactory<Page extends AnyInfiniteQueryPage> =
@@ -120,7 +121,7 @@ class InfiniteQuery<
     }
 
     if (
-      this.nextPageErrorKey === this.#getConfig().key &&
+      this.nextPageErrorKey === hashKey(this.#getConfig().key) &&
       this.nextPageErrorPage === query.data
     ) {
       return this.nextPageError;
@@ -138,7 +139,7 @@ class InfiniteQuery<
   }
 
   get isFetchingNextPage() {
-    return this.nextPageFetchKey === this.#getConfig().key;
+    return this.nextPageFetchKey === hashKey(this.#getConfig().key);
   }
 
   invalidate(options?: InvalidateOptions) {
@@ -162,7 +163,7 @@ class InfiniteQuery<
     const config = this.#getConfig();
     const query = this.#currentQuery();
     const currentPage = query.data;
-    const key = config.key;
+    const key = hashKey(config.key);
 
     if (
       query.isFetching ||

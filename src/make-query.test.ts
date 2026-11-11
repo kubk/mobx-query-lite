@@ -1,7 +1,9 @@
-import { observable, reaction } from "mobx";
+import { autorun, observable, reaction } from "mobx";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inMemoryCache } from "./cache.ts";
+import { hashKey } from "./query-key.ts";
 import {
+  invalidateQueries,
   makeQuery,
   queryRegistry,
   refetchActiveQueries,
@@ -17,7 +19,7 @@ describe("makeQuery", () => {
   describe("basic fetching", () => {
     it("should fetch data successfully", async () => {
       const query = vi.fn().mockResolvedValue({ id: 1, name: "Test" });
-      const state = makeQuery({ query, key: "test-1" });
+      const state = makeQuery({ query, key: ["test-1"] });
 
       expect(state.isPending).toBe(true);
       expect(state.data).toBe(undefined);
@@ -33,7 +35,7 @@ describe("makeQuery", () => {
     it("should handle fetch errors", async () => {
       const error = new Error("Fetch failed");
       const query = vi.fn().mockRejectedValue(error);
-      const state = makeQuery({ query, key: "test-error" });
+      const state = makeQuery({ query, key: ["test-error"] });
 
       await state.refetch();
 
@@ -48,7 +50,7 @@ describe("makeQuery", () => {
         .fn()
         .mockResolvedValueOnce("old-data")
         .mockRejectedValueOnce(error);
-      const state = makeQuery({ query, key: "refetch-error" });
+      const state = makeQuery({ query, key: ["refetch-error"] });
 
       await state.refetch();
       await state.refetch();
@@ -68,7 +70,7 @@ describe("makeQuery", () => {
               resolveRefresh = resolve;
             }),
         );
-      const state = makeQuery({ query, key: "swr-pending" });
+      const state = makeQuery({ query, key: ["swr-pending"] });
 
       await state.refetch();
       const refresh = state.refetch();
@@ -100,7 +102,7 @@ describe("makeQuery", () => {
               resolveSecond = resolve;
             }),
         );
-      const state = makeQuery({ query, key: "latest-fetch-wins" });
+      const state = makeQuery({ query, key: ["latest-fetch-wins"] });
 
       const firstFetch = state.refetch();
       const secondFetch = state.refetch();
@@ -122,7 +124,7 @@ describe("makeQuery", () => {
     it("prefetches stale data without refetching fresh data", async () => {
       const query = vi.fn().mockResolvedValue("data");
       const state = makeQuery(
-        { query, key: "prefetch-fresh" },
+        { query, key: ["prefetch-fresh"] },
         { staleTime: 1000 },
       );
 
@@ -136,7 +138,7 @@ describe("makeQuery", () => {
     it("refetches even when data is fresh", async () => {
       const query = vi.fn().mockResolvedValue("data");
       const state = makeQuery(
-        { query, key: "refetch-fresh" },
+        { query, key: ["refetch-fresh"] },
         { staleTime: Infinity },
       );
 
@@ -149,7 +151,7 @@ describe("makeQuery", () => {
     it("marks an inactive query stale without immediately refetching", async () => {
       const query = vi.fn().mockResolvedValue("data");
       const state = makeQuery(
-        { query, key: "invalidate-inactive" },
+        { query, key: ["invalidate-inactive"] },
         { staleTime: Infinity },
       );
 
@@ -165,7 +167,7 @@ describe("makeQuery", () => {
     it("immediately refetches an inactive query when requested", async () => {
       const query = vi.fn().mockResolvedValue("data");
       const state = makeQuery(
-        { query, key: "invalidate-refetch-inactive" },
+        { query, key: ["invalidate-refetch-inactive"] },
         { staleTime: Infinity },
       );
 
@@ -178,7 +180,7 @@ describe("makeQuery", () => {
     it("immediately refetches an active query when invalidated", async () => {
       const query = vi.fn().mockResolvedValue("data");
       const state = makeQuery(
-        { query, key: "invalidate-active" },
+        { query, key: ["invalidate-active"] },
         { staleTime: Infinity },
       );
 
@@ -198,11 +200,11 @@ describe("makeQuery", () => {
       const activeQuery = vi.fn().mockResolvedValue("active");
       const inactiveQuery = vi.fn().mockResolvedValue("inactive");
       const activeState = makeQuery(
-        { query: activeQuery, key: "refetch-active" },
+        { query: activeQuery, key: ["refetch-active"] },
         { staleTime: Infinity },
       );
       const inactiveState = makeQuery(
-        { query: inactiveQuery, key: "refetch-inactive" },
+        { query: inactiveQuery, key: ["refetch-inactive"] },
         { staleTime: Infinity },
       );
 
@@ -227,7 +229,7 @@ describe("makeQuery", () => {
       vi.useFakeTimers();
       const query = vi.fn().mockResolvedValue("data");
       const state = makeQuery(
-        { query, key: "refetch-on-visible" },
+        { query, key: ["refetch-on-visible"] },
         { staleTime: Infinity },
       );
       await state.prefetch();
@@ -264,16 +266,16 @@ describe("makeQuery", () => {
   describe("registry deduplication", () => {
     it("should return same instance for same query key", () => {
       const query = vi.fn().mockResolvedValue("data");
-      const state1 = makeQuery({ query, key: "same-key" });
-      const state2 = makeQuery({ query, key: "same-key" });
+      const state1 = makeQuery({ query, key: ["same-key"] });
+      const state2 = makeQuery({ query, key: ["same-key"] });
 
       expect(state1).toBe(state2);
     });
 
     it("should return different instances for different query keys", () => {
       const query = vi.fn().mockResolvedValue("data");
-      const state1 = makeQuery({ query, key: "key-1" });
-      const state2 = makeQuery({ query, key: "key-2" });
+      const state1 = makeQuery({ query, key: ["key-1"] });
+      const state2 = makeQuery({ query, key: ["key-2"] });
 
       expect(state1).not.toBe(state2);
     });
@@ -287,7 +289,7 @@ describe("makeQuery", () => {
         const value = key.get();
 
         return {
-          key: `computed-${value}`,
+          key: [`computed-${value}`],
           query: () => query(value),
         };
       });
@@ -313,7 +315,7 @@ describe("makeQuery", () => {
         const value = key.get();
 
         return {
-          key: `observed-${value}`,
+          key: [`observed-${value}`],
           query: () => query(value),
         };
       });
@@ -339,11 +341,11 @@ describe("makeQuery", () => {
   describe("cache persistence", () => {
     it("should save data to in-memory cache on fetch", async () => {
       const query = vi.fn().mockResolvedValue({ id: 1 });
-      const state = makeQuery({ query, key: "cached-1" });
+      const state = makeQuery({ query, key: ["cached-1"] });
 
       await state.refetch();
 
-      const cached = inMemoryCache.get("cached-1");
+      const cached = inMemoryCache.get(hashKey(["cached-1"]));
       if (!cached) {
         throw new Error("Expected cached data");
       }
@@ -353,13 +355,13 @@ describe("makeQuery", () => {
 
     it("should load data from in-memory cache on initialization", () => {
       const lastFetched = Date.now() - 1000;
-      inMemoryCache.set("cached-3", {
+      inMemoryCache.set(hashKey(["cached-3"]), {
         data: { id: 99, name: "Cached" },
         lastFetched,
       });
 
       const query = vi.fn().mockResolvedValue({ id: 100 });
-      const state = makeQuery({ query, key: "cached-3" });
+      const state = makeQuery({ query, key: ["cached-3"] });
 
       expect(state.data).toEqual({ id: 99, name: "Cached" });
       expect(state.lastFetched).toBe(lastFetched);
@@ -368,7 +370,7 @@ describe("makeQuery", () => {
 
     it("should work without prefilled cache", async () => {
       const query = vi.fn().mockResolvedValue({ id: 5 });
-      const state = makeQuery({ query, key: "no-cache" });
+      const state = makeQuery({ query, key: ["no-cache"] });
 
       await state.refetch();
 
@@ -389,7 +391,7 @@ describe("makeQuery", () => {
     it("should refetch when data is observed after becoming stale", async () => {
       const query = vi.fn().mockResolvedValue("data");
       const state = makeQuery(
-        { query, key: "stale-refetch-on-observe" },
+        { query, key: ["stale-refetch-on-observe"] },
         { staleTime: 1000 },
       );
 
@@ -412,7 +414,7 @@ describe("makeQuery", () => {
     it("should not refetch when data is observed before staleTime", async () => {
       const query = vi.fn().mockResolvedValue("data");
       const state = makeQuery(
-        { query, key: "stale-no-refetch" },
+        { query, key: ["stale-no-refetch"] },
         { staleTime: 1000 },
       );
 
@@ -435,7 +437,7 @@ describe("makeQuery", () => {
     it("should refetch when data is observed well past staleTime", async () => {
       const query = vi.fn().mockResolvedValue("data");
       const state = makeQuery(
-        { query, key: "stale-refetch-1500" },
+        { query, key: ["stale-refetch-1500"] },
         { staleTime: 1000 },
       );
 
@@ -467,26 +469,26 @@ describe("makeQuery", () => {
 
     it("removes inactive query state and cached data after gcTime", async () => {
       const state = makeQuery(
-        { query: async () => "data", key: "gc-inactive" },
+        { query: async () => "data", key: ["gc-inactive"] },
         { gcTime: 1000 },
       );
 
       await state.refetch();
 
-      expect(queryRegistry.has("gc-inactive")).toBe(true);
-      expect(inMemoryCache.get("gc-inactive")?.data).toBe("data");
+      expect(queryRegistry.has(hashKey(["gc-inactive"]))).toBe(true);
+      expect(inMemoryCache.get(hashKey(["gc-inactive"]))?.data).toBe("data");
 
       await vi.advanceTimersByTimeAsync(1000);
 
-      expect(queryRegistry.has("gc-inactive")).toBe(false);
-      expect(inMemoryCache.get("gc-inactive")).toBe(null);
+      expect(queryRegistry.has(hashKey(["gc-inactive"]))).toBe(false);
+      expect(inMemoryCache.get(hashKey(["gc-inactive"]))).toBe(null);
       expect(state.data).toBe(undefined);
       expect(state.lastFetched).toBe(null);
     });
 
     it("keeps an observed query and starts gcTime when it becomes inactive", async () => {
       const state = makeQuery(
-        { query: async () => "data", key: "gc-observed" },
+        { query: async () => "data", key: ["gc-observed"] },
         { gcTime: 1000 },
       );
       const dispose = reaction(
@@ -495,21 +497,21 @@ describe("makeQuery", () => {
       );
 
       await vi.advanceTimersByTimeAsync(1000);
-      expect(queryRegistry.has("gc-observed")).toBe(true);
+      expect(queryRegistry.has(hashKey(["gc-observed"]))).toBe(true);
 
       dispose();
       await vi.advanceTimersByTimeAsync(999);
-      expect(queryRegistry.has("gc-observed")).toBe(true);
+      expect(queryRegistry.has(hashKey(["gc-observed"]))).toBe(true);
 
       await vi.advanceTimersByTimeAsync(1);
-      expect(queryRegistry.has("gc-observed")).toBe(false);
+      expect(queryRegistry.has(hashKey(["gc-observed"]))).toBe(false);
     });
 
     it("postpones garbage collection while a fetch is running", async () => {
       let resolveFetch!: (data: string) => void;
       const state = makeQuery(
         {
-          key: "gc-fetching",
+          key: ["gc-fetching"],
           query: () =>
             new Promise<string>((resolve) => {
               resolveFetch = resolve;
@@ -521,32 +523,32 @@ describe("makeQuery", () => {
       const fetch = state.refetch();
       await vi.advanceTimersByTimeAsync(1000);
 
-      expect(queryRegistry.has("gc-fetching")).toBe(true);
+      expect(queryRegistry.has(hashKey(["gc-fetching"]))).toBe(true);
 
       resolveFetch("data");
       await fetch;
       await vi.advanceTimersByTimeAsync(1000);
 
-      expect(queryRegistry.has("gc-fetching")).toBe(false);
-      expect(inMemoryCache.get("gc-fetching")).toBe(null);
+      expect(queryRegistry.has(hashKey(["gc-fetching"]))).toBe(false);
+      expect(inMemoryCache.get(hashKey(["gc-fetching"]))).toBe(null);
     });
 
     it("garbage collects data set through an evicted query reference", async () => {
       const state = makeQuery(
-        { query: async () => "fetched", key: "gc-reused" },
+        { query: async () => "fetched", key: ["gc-reused"] },
         { gcTime: 1000 },
       );
 
       await vi.advanceTimersByTimeAsync(1000);
-      expect(queryRegistry.has("gc-reused")).toBe(false);
+      expect(queryRegistry.has(hashKey(["gc-reused"]))).toBe(false);
 
       state.setData("updated");
-      expect(queryRegistry.get("gc-reused")).toBe(state);
-      expect(inMemoryCache.get("gc-reused")?.data).toBe("updated");
+      expect(queryRegistry.get(hashKey(["gc-reused"]))).toBe(state);
+      expect(inMemoryCache.get(hashKey(["gc-reused"]))?.data).toBe("updated");
 
       await vi.advanceTimersByTimeAsync(1000);
-      expect(queryRegistry.has("gc-reused")).toBe(false);
-      expect(inMemoryCache.get("gc-reused")).toBe(null);
+      expect(queryRegistry.has(hashKey(["gc-reused"]))).toBe(false);
+      expect(inMemoryCache.get(hashKey(["gc-reused"]))).toBe(null);
       expect(state.data).toBe(undefined);
     });
   });
@@ -556,7 +558,7 @@ describe("makeQuery", () => {
       const query = vi.fn().mockResolvedValue({ id: 1 });
       const state = makeQuery<{ id: number } | null>({
         query,
-        key: "manual-1",
+        key: ["manual-1"],
       });
 
       await state.refetch();
@@ -571,19 +573,35 @@ describe("makeQuery", () => {
 
     it("should update in-memory cache when setData is called", () => {
       const query = vi.fn().mockResolvedValue({ id: 1 });
-      const state = makeQuery({ query, key: "setdata-cache" });
+      const state = makeQuery({ query, key: ["setdata-cache"] });
 
       state.setData({ id: 99 });
       expect(state.data).toEqual({ id: 99 });
-      const cached = inMemoryCache.get("setdata-cache");
+      const cached = inMemoryCache.get(hashKey(["setdata-cache"]));
       expect(cached?.data).toEqual({ id: 99 });
+    });
+
+    it("wins over the response of a request started before it", async () => {
+      let resolve: (value: string) => void = () => {};
+      const query = vi.fn(
+        () => new Promise<string>((done) => (resolve = done)),
+      );
+      const state = makeQuery({ query, key: ["optimistic"] });
+
+      const request = state.refetch();
+      state.setData("optimistic");
+      resolve("stale");
+      await request;
+
+      expect(state.data).toBe("optimistic");
+      expect(state.isFetching).toBe(false);
     });
   });
 
   describe("refetch", () => {
     it("should refetch data", async () => {
       const query = vi.fn().mockResolvedValue({ id: 1 });
-      const state = makeQuery({ query, key: "fetch-1" });
+      const state = makeQuery({ query, key: ["fetch-1"] });
 
       await state.refetch();
 
@@ -603,14 +621,14 @@ describe("makeQuery", () => {
 
     it("should refetch stale cached data when observed", async () => {
       const lastFetched = Date.now() - 2000;
-      inMemoryCache.set("cache-stale-test", {
+      inMemoryCache.set(hashKey(["cache-stale-test"]), {
         data: { id: 1, name: "Old" },
         lastFetched,
       });
 
       const query = vi.fn().mockResolvedValue({ id: 2, name: "Fresh" });
       const state = makeQuery(
-        { query, key: "cache-stale-test" },
+        { query, key: ["cache-stale-test"] },
         { staleTime: 1000 },
       );
 
@@ -632,14 +650,14 @@ describe("makeQuery", () => {
 
     it("should NOT refetch fresh cached data when observed", async () => {
       const lastFetched = Date.now() - 500;
-      inMemoryCache.set("cache-fresh-test", {
+      inMemoryCache.set(hashKey(["cache-fresh-test"]), {
         data: { id: 1, name: "Cached" },
         lastFetched,
       });
 
       const query = vi.fn().mockResolvedValue({ id: 2, name: "Fresh" });
       const state = makeQuery(
-        { query, key: "cache-fresh-test" },
+        { query, key: ["cache-fresh-test"] },
         { staleTime: 1000 },
       );
 
@@ -653,6 +671,77 @@ describe("makeQuery", () => {
 
       expect(query).not.toHaveBeenCalled();
       dispose();
+    });
+  });
+
+  describe("query keys", () => {
+    it("shares one query between keys whose objects list properties in another order", () => {
+      const query = vi.fn().mockResolvedValue(1);
+      const first = makeQuery({ query, key: ["todos", { a: 1, b: 2 }] });
+      const second = makeQuery({ query, key: ["todos", { b: 2, a: 1 }] });
+
+      expect(first).toBe(second);
+    });
+
+    it("invalidates the queries whose key starts with the filter", async () => {
+      const make = (key: unknown[]) => {
+        const query = vi.fn().mockResolvedValue(key);
+        const state = makeQuery({ query, key });
+        return { query, state };
+      };
+      const open = make(["todos", "list", { status: "open", page: 1 }]);
+      const done = make(["todos", "list", { status: "done", page: 1 }]);
+      const detail = make(["todos", "detail", 1]);
+      const otherRoot = make(["todosArchive", "list"]);
+      const all = [open, done, detail, otherRoot];
+      const dispose = autorun(() => all.map(({ state }) => state.data));
+      await Promise.all(all.map(({ state }) => state.refetch()));
+      all.forEach(({ query }) => query.mockClear());
+
+      await invalidateQueries({ key: ["todos", "list"] });
+      expect(open.query).toHaveBeenCalledTimes(1);
+      expect(done.query).toHaveBeenCalledTimes(1);
+      expect(detail.query).not.toHaveBeenCalled();
+      expect(otherRoot.query).not.toHaveBeenCalled();
+
+      all.forEach(({ query }) => query.mockClear());
+      await invalidateQueries({ key: ["todos", "list", { status: "open" }] });
+      expect(open.query).toHaveBeenCalledTimes(1);
+      expect(done.query).not.toHaveBeenCalled();
+      dispose();
+    });
+
+    it("invalidates only the identical key with exact", async () => {
+      const listQuery = vi.fn().mockResolvedValue("list");
+      const filteredQuery = vi.fn().mockResolvedValue("filtered");
+      const list = makeQuery({ query: listQuery, key: ["todos", "list"] });
+      const filtered = makeQuery({
+        query: filteredQuery,
+        key: ["todos", "list", { status: "open" }],
+      });
+      const dispose = autorun(() => [list.data, filtered.data]);
+      await Promise.all([list.refetch(), filtered.refetch()]);
+      listQuery.mockClear();
+      filteredQuery.mockClear();
+
+      await invalidateQueries({ key: ["todos", "list"], exact: true });
+
+      expect(listQuery).toHaveBeenCalledTimes(1);
+      expect(filteredQuery).not.toHaveBeenCalled();
+      dispose();
+    });
+
+    it("refetches matching inactive queries only with refetchInactive", async () => {
+      const query = vi.fn().mockResolvedValue("data");
+      const state = makeQuery({ query, key: ["inactive", 1] });
+      await state.refetch();
+      query.mockClear();
+
+      await invalidateQueries({ key: ["inactive"] });
+      expect(query).not.toHaveBeenCalled();
+
+      await invalidateQueries({ key: ["inactive"], refetchInactive: true });
+      expect(query).toHaveBeenCalledTimes(1);
     });
   });
 });

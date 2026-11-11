@@ -1,10 +1,13 @@
 export { inMemoryCache } from "./cache.ts";
+export { hashKey, type QueryKey } from "./query-key.ts";
 export {
+  invalidateQueries,
   makeQuery,
   queryRegistry,
   refetchActiveQueries,
   refetchActiveQueriesOnVisible,
   type InvalidateOptions,
+  type InvalidateQueriesFilters,
   type QueryOptions,
   type QueryState,
 } from "./make-query.ts";

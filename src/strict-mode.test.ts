@@ -22,9 +22,9 @@ describe("state changes after a request run in actions", () => {
   });
 
   it("makeQuery success and failure", async () => {
-    const ok = makeQuery({ key: "strict-ok", query: async () => 1 });
+    const ok = makeQuery({ key: ["strict-ok"], query: async () => 1 });
     const failing = makeQuery({
-      key: "strict-fail",
+      key: ["strict-fail"],
       query: async () => {
         throw new Error("boom");
       },
@@ -43,7 +43,7 @@ describe("state changes after a request run in actions", () => {
   it("makeInfiniteQuery next page success and failure", async () => {
     let failNext = false;
     const state = makeInfiniteQuery({
-      key: "strict-infinite",
+      key: ["strict-infinite"],
       query: async ({ cursor }: { cursor?: number }) => {
         if (failNext) throw new Error("next failed");
         return { items: [cursor ?? 0], nextCursor: (cursor ?? 0) + 1 };

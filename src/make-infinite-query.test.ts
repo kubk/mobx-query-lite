@@ -1,6 +1,7 @@
 import { observable, reaction } from "mobx";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inMemoryCache } from "./cache.ts";
+import { hashKey } from "./query-key.ts";
 import { makeInfiniteQuery } from "./make-infinite-query.ts";
 import { queryRegistry, refetchActiveQueries } from "./make-query.ts";
 
@@ -16,7 +17,7 @@ describe("makeInfiniteQuery", () => {
       nextCursor: "next",
     });
     const state = makeInfiniteQuery({
-      key: "infinite-first-page",
+      key: ["infinite-first-page"],
       query,
     });
 
@@ -33,7 +34,7 @@ describe("makeInfiniteQuery", () => {
       nextCursor: null,
     });
     const state = makeInfiniteQuery({
-      key: "infinite-refetch-inactive",
+      key: ["infinite-refetch-inactive"],
       query,
     });
 
@@ -49,7 +50,7 @@ describe("makeInfiniteQuery", () => {
       .mockResolvedValueOnce({ items: [1, 2], nextCursor: "next" })
       .mockResolvedValueOnce({ items: [3, 4], nextCursor: null });
     const state = makeInfiniteQuery({
-      key: "infinite-next-page",
+      key: ["infinite-next-page"],
       query,
     });
 
@@ -67,7 +68,7 @@ describe("makeInfiniteQuery", () => {
       .mockResolvedValueOnce({ items: [1], nextCursor: 0 })
       .mockResolvedValueOnce({ items: [2], nextCursor: null });
     const state = makeInfiniteQuery({
-      key: "infinite-zero-cursor",
+      key: ["infinite-zero-cursor"],
       query,
     });
 
@@ -95,7 +96,7 @@ describe("makeInfiniteQuery", () => {
           ),
       );
     const state = makeInfiniteQuery({
-      key: "infinite-next-page-dedupe",
+      key: ["infinite-next-page-dedupe"],
       query,
     });
 
@@ -119,7 +120,7 @@ describe("makeInfiniteQuery", () => {
       .mockResolvedValueOnce({ items: [1], nextCursor: "next" })
       .mockRejectedValueOnce(error);
     const state = makeInfiniteQuery({
-      key: "infinite-next-page-error",
+      key: ["infinite-next-page-error"],
       query,
     });
 
@@ -138,7 +139,7 @@ describe("makeInfiniteQuery", () => {
       .mockRejectedValueOnce(new Error("Failed"))
       .mockResolvedValueOnce({ items: [2], nextCursor: "next" });
     const state = makeInfiniteQuery({
-      key: "infinite-next-page-error-refetch",
+      key: ["infinite-next-page-error-refetch"],
       query,
     });
     const dispose = reaction(
@@ -163,7 +164,7 @@ describe("makeInfiniteQuery", () => {
       .mockResolvedValueOnce({ items: [1], nextCursor: "next" })
       .mockRejectedValueOnce("Failed");
     const state = makeInfiniteQuery({
-      key: "infinite-next-page-string-error",
+      key: ["infinite-next-page-string-error"],
       query,
     });
 
@@ -184,7 +185,7 @@ describe("makeInfiniteQuery", () => {
       const value = key.get();
 
       return {
-        key: `infinite-computed:${value}`,
+        key: [`infinite-computed:${value}`],
         query: () => query(value),
       };
     });
@@ -214,7 +215,7 @@ describe("makeInfiniteQuery", () => {
       .mockResolvedValueOnce({ items: ["first"], nextCursor: "next" })
       .mockRejectedValueOnce(error);
     const state = makeInfiniteQuery(() => ({
-      key: `infinite-error-key:${key.get()}`,
+      key: [`infinite-error-key:${key.get()}`],
       query,
     }));
 
@@ -241,7 +242,7 @@ describe("makeInfiniteQuery", () => {
     it("garbage collects combined page data after it becomes inactive", async () => {
       const state = makeInfiniteQuery(
         {
-          key: "infinite-gc",
+          key: ["infinite-gc"],
           query: async () => ({ items: [1, 2], nextCursor: null }),
         },
         { gcTime: 1000 },
@@ -252,13 +253,13 @@ describe("makeInfiniteQuery", () => {
       );
 
       await vi.runAllTimersAsync();
-      expect(queryRegistry.has("infinite-gc")).toBe(true);
+      expect(queryRegistry.has(hashKey(["infinite-gc"]))).toBe(true);
 
       dispose();
       await vi.advanceTimersByTimeAsync(1000);
 
-      expect(queryRegistry.has("infinite-gc")).toBe(false);
-      expect(inMemoryCache.get("infinite-gc")).toBe(null);
+      expect(queryRegistry.has(hashKey(["infinite-gc"]))).toBe(false);
+      expect(inMemoryCache.get(hashKey(["infinite-gc"]))).toBe(null);
     });
   });
 });
