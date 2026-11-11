@@ -1,6 +1,6 @@
 {
   "name": "mobx-query-lite",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Lightweight observable queries, infinite queries and mutations for MobX",
   "keywords": [
     "mobx",
