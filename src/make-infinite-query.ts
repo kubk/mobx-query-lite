@@ -1,4 +1,4 @@
-import { makeAutoObservable } from "mobx";
+import { makeAutoObservable, runInAction } from "mobx";
 import {
   makeQuery,
   type InvalidateOptions,
@@ -182,21 +182,26 @@ class InfiniteQuery<
         cursor: currentPage.nextCursor,
       });
 
-      query.setData({
-        items: currentPage.items.concat(result.items),
-        nextCursor: result.nextCursor,
-      });
+      // An action only covers the synchronous part of an async method, so writes after `await` need their own
+      runInAction(() => {
+        query.setData({
+          items: currentPage.items.concat(result.items),
+          nextCursor: result.nextCursor,
+        });
 
-      if (this.nextPageFetchKey === key) {
-        this.nextPageFetchKey = null;
-      }
+        if (this.nextPageFetchKey === key) {
+          this.nextPageFetchKey = null;
+        }
+      });
     } catch (error) {
-      if (this.nextPageFetchKey === key) {
-        this.nextPageFetchKey = null;
-      }
-      this.nextPageError = toError(error);
-      this.nextPageErrorKey = key;
-      this.nextPageErrorPage = currentPage;
+      runInAction(() => {
+        if (this.nextPageFetchKey === key) {
+          this.nextPageFetchKey = null;
+        }
+        this.nextPageError = toError(error);
+        this.nextPageErrorKey = key;
+        this.nextPageErrorPage = currentPage;
+      });
     }
   }
 }

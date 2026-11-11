@@ -202,10 +202,13 @@ class StaticQuery<T> implements QueryState<T> {
     try {
       data = await this.fetcher.query();
     } catch (error) {
-      if (this.fetchId === currentFetchId) {
-        this.error = toError(error);
-        this.isFetching = false;
-      }
+      // An action only covers the synchronous part of an async method, so writes after `await` need their own
+      runInAction(() => {
+        if (this.fetchId === currentFetchId) {
+          this.error = toError(error);
+          this.isFetching = false;
+        }
+      });
       return;
     }
 
@@ -214,12 +217,14 @@ class StaticQuery<T> implements QueryState<T> {
     }
 
     const lastFetched = Date.now();
-    this.data = data;
-    this.lastFetched = lastFetched;
-    this.isFetching = false;
-    if (this.invalidationId === currentInvalidationId) {
-      this.isInvalidated = false;
-    }
+    runInAction(() => {
+      this.data = data;
+      this.lastFetched = lastFetched;
+      this.isFetching = false;
+      if (this.invalidationId === currentInvalidationId) {
+        this.isInvalidated = false;
+      }
+    });
     inMemoryCache.set(this.fetcher.key, { data, lastFetched });
   }
 
